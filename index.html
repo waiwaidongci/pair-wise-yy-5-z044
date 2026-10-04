@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手工织锦纹样排版台</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, "PingFang SC", sans-serif; background: #f3efe7; color: #282018; }
+    header { padding: 18px 24px; background: #fffaf2; border-bottom: 1px solid #d9cdbc; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+    h1 { margin: 0; font-size: 26px; }
+    button { border: 0; border-radius: 8px; padding: 10px 13px; background: #8d3e37; color: #fff; font-weight: 800; cursor: pointer; }
+    button.secondary { background: #71675c; }
+    input, select { width: 100%; border: 1px solid #d9cdbc; border-radius: 6px; padding: 9px; font: inherit; background: #fff; }
+    label { display: block; margin: 9px 0 5px; color: #76695e; font-size: 13px; }
+    .app { display: grid; grid-template-columns: 280px 1fr 320px; gap: 16px; padding: 16px; }
+    .panel { background: #fffaf2; border: 1px solid #d9cdbc; border-radius: 8px; padding: 14px; }
+    .grid { display: grid; gap: 2px; margin: 0 auto; width: min(100%, 720px); border: 6px solid #72533c; background: #72533c; }
+    .cell { aspect-ratio: 1; background: #f8ead2; cursor: pointer; border-radius: 2px; }
+    .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .swatch { aspect-ratio: 1; border-radius: 8px; border: 3px solid transparent; cursor: pointer; }
+    .swatch.active { border-color: #1f1b16; }
+    .blocks { display: grid; gap: 8px; }
+    .stats { display: grid; gap: 8px; }
+    .stat { display: flex; justify-content: space-between; border-bottom: 1px solid #e1d5c5; padding: 6px 0; }
+    .preview { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; border: 1px solid #d9cdbc; padding: 6px; margin-top: 8px; }
+    .mini { aspect-ratio: 1; border-radius: 2px; }
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .warning { color: #a03a2e; font-weight: 800; }
+    @media (max-width: 1000px) { header { display: block; } .app { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>手工织锦纹样排版台</h1><div>绘制经纬网格纹样，统计色线用量并保存方案。</div></div>
+    <div class="toolbar"><button id="saveBtn">保存方案</button><button id="exportBtn" class="secondary">导出JSON</button></div>
+  </header>
+  <main class="app">
+    <aside class="panel">
+      <h2>画布</h2>
+      <label>经向列数</label><input id="cols" type="number" value="18" min="6" max="36">
+      <label>纬向行数</label><input id="rows" type="number" value="14" min="6" max="32">
+      <button id="newBtn">新建网格</button>
+      <h2>色线库</h2>
+      <div class="palette" id="palette"></div>
+      <h2>基础纹样块</h2>
+      <div class="blocks">
+        <button data-block="dot" class="secondary">单点</button>
+        <button data-block="cross" class="secondary">十字</button>
+        <button data-block="diamond" class="secondary">小菱形</button>
+      </div>
+    </aside>
+    <section class="panel"><div class="grid" id="grid"></div></section>
+    <aside class="panel">
+      <h2>操作</h2>
+      <div class="toolbar"><button id="undoBtn" class="secondary">撤销</button><button id="redoBtn" class="secondary">重做</button></div>
+      <p>点击填色，按住拖动可连续填色。</p>
+      <h2>用色统计</h2>
+      <div class="stats" id="stats"></div>
+      <h2>重复单元预览</h2>
+      <div class="preview" id="preview"></div>
+      <h2>断线风险</h2>
+      <div id="risk"></div>
+    </aside>
+  </main>
+  <script>
+    const colors = ["#f7e7c4","#a6322d","#1f5f78","#d6a437","#355b38","#713d7b","#1e1b18","#e98c52"];
+    const grid = document.querySelector("#grid");
+    const palette = document.querySelector("#palette");
+    const stats = document.querySelector("#stats");
+    const preview = document.querySelector("#preview");
+    const risk = document.querySelector("#risk");
+    let cols = 18, rows = 14, active = 1, block = "dot", dragging = false;
+    let cells = [];
+    let undo = [], redo = [];
+    function init(loadSaved = true) {
+      const saved = loadSaved && JSON.parse(localStorage.getItem("zfl31Pattern") || "null");
+      if (saved) { cols = saved.cols; rows = saved.rows; cells = saved.cells; }
+      else { cols = Number(document.querySelector("#cols").value); rows = Number(document.querySelector("#rows").value); cells = Array(cols * rows).fill(0); }
+      document.querySelector("#cols").value = cols; document.querySelector("#rows").value = rows;
+      render();
+    }
+    function render() {
+      palette.innerHTML = colors.map((c, i) => '<button class="swatch '+(i===active?'active':'')+'" data-color="'+i+'" style="background:'+c+'"></button>').join("");
+      palette.querySelectorAll("[data-color]").forEach(el => el.onclick = () => { active = Number(el.dataset.color); render(); });
+      grid.style.gridTemplateColumns = "repeat("+cols+", 1fr)";
+      grid.innerHTML = cells.map((v, i) => '<div class="cell" data-i="'+i+'" style="background:'+colors[v]+'"></div>').join("");
+      grid.querySelectorAll(".cell").forEach(el => {
+        el.onpointerdown = () => { dragging = true; paint(Number(el.dataset.i)); };
+        el.onpointerenter = () => { if (dragging) paint(Number(el.dataset.i)); };
+      });
+      window.onpointerup = () => dragging = false;
+      renderStats();
+    }
+    function snapshot() { undo.push([...cells]); redo = []; if (undo.length > 50) undo.shift(); }
+    function paint(i) {
+      snapshot();
+      const targets = pattern(i);
+      targets.forEach(t => { if (t >= 0 && t < cells.length) cells[t] = active; });
+      render();
+    }
+    function pattern(i) {
+      const x = i % cols, y = Math.floor(i / cols);
+      if (block === "cross") return [i, idx(x-1,y), idx(x+1,y), idx(x,y-1), idx(x,y+1)].filter(v => v !== null);
+      if (block === "diamond") return [idx(x,y-1), idx(x-1,y), i, idx(x+1,y), idx(x,y+1)].filter(v => v !== null);
+      return [i];
+    }
+    function idx(x,y) { return x < 0 || x >= cols || y < 0 || y >= rows ? null : y * cols + x; }
+    function renderStats() {
+      const counts = colors.map((_, i) => cells.filter(v => v === i).length);
+      stats.innerHTML = counts.map((n, i) => '<div class="stat"><span><span style="display:inline-block;width:14px;height:14px;background:'+colors[i]+'"></span> 色线'+i+'</span><b>'+n+'</b></div>').join("");
+      preview.innerHTML = Array.from({length: 36}, (_, i) => '<div class="mini" style="background:'+colors[cells[(i % 6) + Math.floor(i / 6) * cols] || colors[0]]+'"></div>').join("");
+      const riskRows = [];
+      for (let y = 0; y < rows; y++) {
+        let switches = 0;
+        for (let x = 1; x < cols; x++) if (cells[y*cols+x] !== cells[y*cols+x-1]) switches++;
+        if (switches > cols * .62) riskRows.push(y + 1);
+      }
+      risk.innerHTML = riskRows.length ? '<p class="warning">第'+riskRows.join("、")+'行换色过密，可能断线。</p>' : '<p>暂无明显断线风险。</p>';
+    }
+    document.querySelectorAll("[data-block]").forEach(btn => btn.onclick = () => block = btn.dataset.block);
+    document.querySelector("#newBtn").onclick = () => { undo = []; redo = []; init(false); };
+    document.querySelector("#undoBtn").onclick = () => { if (!undo.length) return; redo.push([...cells]); cells = undo.pop(); render(); };
+    document.querySelector("#redoBtn").onclick = () => { if (!redo.length) return; undo.push([...cells]); cells = redo.pop(); render(); };
+    document.querySelector("#saveBtn").onclick = () => localStorage.setItem("zfl31Pattern", JSON.stringify({ cols, rows, cells }));
+    document.querySelector("#exportBtn").onclick = () => {
+      const data = { cols, rows, cells, usage: colors.map((color, i) => ({ color, count: cells.filter(v => v === i).length })) };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "brocade-pattern.json"; a.click(); URL.revokeObjectURL(a.href);
+    };
+    init();
+  </script>
+</body>
+</html>
