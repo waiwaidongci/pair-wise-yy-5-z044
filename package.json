@@ -1,0 +1,13 @@
+{
+  "name": "brocade-scheduling-bench",
+  "version": "1.0.0",
+  "description": "手工织锦纹样可恢复排产台：网格/色线/织造批次/交付包，冲突仲裁与按批次号恢复",
+  "main": "src/core.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
