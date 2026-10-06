@@ -3,20 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手工织锦纹样排版台</title>
+  <title>手工织锦纹样排版台 · 排产版</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, "PingFang SC", sans-serif; background: #f3efe7; color: #282018; }
-    header { padding: 18px 24px; background: #fffaf2; border-bottom: 1px solid #d9cdbc; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+    header { padding: 18px 24px; background: #fffaf2; border-bottom: 1px solid #d9cdbc; display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
     h1 { margin: 0; font-size: 26px; }
+    h2 { margin: 14px 0 8px; font-size: 17px; }
     button { border: 0; border-radius: 8px; padding: 10px 13px; background: #8d3e37; color: #fff; font-weight: 800; cursor: pointer; }
     button.secondary { background: #71675c; }
+    button.small { padding: 6px 9px; font-size: 12px; }
     input, select { width: 100%; border: 1px solid #d9cdbc; border-radius: 6px; padding: 9px; font: inherit; background: #fff; }
     label { display: block; margin: 9px 0 5px; color: #76695e; font-size: 13px; }
     .app { display: grid; grid-template-columns: 280px 1fr 320px; gap: 16px; padding: 16px; }
     .panel { background: #fffaf2; border: 1px solid #d9cdbc; border-radius: 8px; padding: 14px; }
     .grid { display: grid; gap: 2px; margin: 0 auto; width: min(100%, 720px); border: 6px solid #72533c; background: #72533c; }
-    .cell { aspect-ratio: 1; background: #f8ead2; cursor: pointer; border-radius: 2px; }
+    .cell { aspect-ratio: 1; background: #f8ead2; cursor: pointer; border-radius: 2px; position: relative; }
+    .cell.conflict::after { content: ""; position: absolute; inset: 0; border: 3px solid #a03a2e; border-radius: 2px; pointer-events: none; }
     .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     .swatch { aspect-ratio: 1; border-radius: 8px; border: 3px solid transparent; cursor: pointer; }
     .swatch.active { border-color: #1f1b16; }
@@ -27,12 +30,32 @@
     .mini { aspect-ratio: 1; border-radius: 2px; }
     .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .warning { color: #a03a2e; font-weight: 800; }
-    @media (max-width: 1000px) { header { display: block; } .app { grid-template-columns: 1fr; } }
+    .ok { color: #355b38; font-weight: 800; }
+    .scheduling { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 0 16px 16px; }
+    .batch, .conflict, .package, .log-entry { border: 1px solid #e1d5c5; border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 13px; background: #fff; }
+    .batch-head { font-weight: 800; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; color: #fff; }
+    .badge.queued { background: #a06a2e; }
+    .badge.started { background: #355b38; }
+    .gap { color: #a03a2e; font-weight: 800; margin-top: 4px; }
+    .stale { color: #a06a2e; font-weight: 800; margin-top: 4px; }
+    .batch-meta { color: #76695e; margin: 4px 0; }
+    .batch-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .conflict.resolved { opacity: .6; }
+    .conflict .swatch-inline { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: middle; margin: 0 2px; }
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+    .seg button { background: #d9cdbc; color: #5a4f44; }
+    .seg button.active { background: #8d3e37; color: #fff; }
+    .log-entry { font-size: 12px; color: #5a4f44; margin-bottom: 4px; padding: 5px 7px; }
+    .muted { color: #76695e; font-size: 12px; }
+    .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 6px; }
+    @media (max-width: 1100px) { .scheduling { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 1000px) { header { display: block; } .app { grid-template-columns: 1fr; } .scheduling { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
-    <div><h1>手工织锦纹样排版台</h1><div>绘制经纬网格纹样，统计色线用量并保存方案。</div></div>
+    <div><h1>手工织锦纹样排版台 · 排产版</h1><div>车间与打样双稿合并：冲突保留车间值，按批次锁定幅面与色线容量，断网按批次号恢复。</div></div>
     <div class="toolbar"><button id="saveBtn">保存方案</button><button id="exportBtn" class="secondary">导出JSON</button></div>
   </header>
   <main class="app">
@@ -41,6 +64,12 @@
       <label>经向列数</label><input id="cols" type="number" value="18" min="6" max="36">
       <label>纬向行数</label><input id="rows" type="number" value="14" min="6" max="32">
       <button id="newBtn">新建网格</button>
+      <h2>改稿方</h2>
+      <div class="seg" id="sideSeg">
+        <button data-side="workshop" class="active">织造车间</button>
+        <button data-side="sample">打样间</button>
+      </div>
+      <p class="muted" id="sideHint">当前稿：织造车间。同一格两边都改过时保留车间值，打样稿留冲突。</p>
       <h2>色线库</h2>
       <div class="palette" id="palette"></div>
       <h2>基础纹样块</h2>
@@ -49,12 +78,11 @@
         <button data-block="cross" class="secondary">十字</button>
         <button data-block="diamond" class="secondary">小菱形</button>
       </div>
+      <h2>操作</h2>
+      <div class="toolbar"><button id="undoBtn" class="secondary">撤销</button><button id="redoBtn" class="secondary">重做</button></div>
     </aside>
     <section class="panel"><div class="grid" id="grid"></div></section>
     <aside class="panel">
-      <h2>操作</h2>
-      <div class="toolbar"><button id="undoBtn" class="secondary">撤销</button><button id="redoBtn" class="secondary">重做</button></div>
-      <p>点击填色，按住拖动可连续填色。</p>
       <h2>用色统计</h2>
       <div class="stats" id="stats"></div>
       <h2>重复单元预览</h2>
@@ -63,72 +91,368 @@
       <div id="risk"></div>
     </aside>
   </main>
+  <section class="scheduling">
+    <div class="panel">
+      <h2>批次与排产</h2>
+      <label>色线容量（每批允许的色线种数）</label>
+      <input id="capacity" type="number" value="6" min="1" max="12">
+      <button id="newBatchBtn">新建批次（锁定当前网格）</button>
+      <div id="batchList"></div>
+      <h2>回传批次稿</h2>
+      <div class="inline-form">
+        <input id="uploadBatchNo" type="number" min="1" placeholder="批次号">
+        <button id="uploadBtn" class="secondary">回传</button>
+      </div>
+      <p class="muted">重复回传只认首次回传。</p>
+    </div>
+    <div class="panel">
+      <h2>冲突处理</h2>
+      <p class="muted">同一格两边都改过时保留车间值，打样稿留冲突；冲突未处理不会生成交付包。</p>
+      <div id="conflictList"></div>
+    </div>
+    <div class="panel">
+      <h2>交付包</h2>
+      <p class="muted">已开织批次保留原快照，不受方案变更影响。</p>
+      <div id="packageList"></div>
+    </div>
+    <div class="panel">
+      <h2>恢复日志</h2>
+      <div id="logList"></div>
+      <button id="interruptBtn" class="secondary small">模拟写入中断（下次启动按批次号恢复）</button>
+    </div>
+  </section>
   <script>
     const colors = ["#f7e7c4","#a6322d","#1f5f78","#d6a437","#355b38","#713d7b","#1e1b18","#e98c52"];
-    const grid = document.querySelector("#grid");
-    const palette = document.querySelector("#palette");
-    const stats = document.querySelector("#stats");
-    const preview = document.querySelector("#preview");
-    const risk = document.querySelector("#risk");
-    let cols = 18, rows = 14, active = 1, block = "dot", dragging = false;
-    let cells = [];
+    const STORE_KEY = "zfl31State";
+    const FLAG_KEY = "zfl31WriteFlag";
+    const LEGACY_KEY = "zfl31Pattern";
+    const batchKey = n => "zfl31Batch" + n;
+    const $ = id => document.querySelector("#" + id);
+    const grid = $("grid"), palette = $("palette"), stats = $("stats"), preview = $("preview"), risk = $("risk");
+
+    let state = null;
+    let cols = 18, rows = 14, active = 1, block = "dot", activeSide = "workshop", dragging = false;
     let undo = [], redo = [];
-    function init(loadSaved = true) {
-      const saved = loadSaved && JSON.parse(localStorage.getItem("zfl31Pattern") || "null");
-      if (saved) { cols = saved.cols; rows = saved.rows; cells = saved.cells; }
-      else { cols = Number(document.querySelector("#cols").value); rows = Number(document.querySelector("#rows").value); cells = Array(cols * rows).fill(0); }
-      document.querySelector("#cols").value = cols; document.querySelector("#rows").value = rows;
-      render();
+
+    function defaultState() {
+      const c = cols * rows;
+      return {
+        schema: 2, planNo: 1, cols, rows,
+        baseCells: Array(c).fill(0),
+        workshopCells: Array(c).fill(0),
+        sampleCells: Array(c).fill(0),
+        cells: Array(c).fill(0),
+        conflicts: [],
+        batches: [],
+        uploads: {},
+        planRevision: 0,
+        log: []
+      };
     }
+    function log(msg) {
+      state.log.unshift({ t: Date.now(), msg });
+      if (state.log.length > 60) state.log.pop();
+    }
+
+    // ---------- 双稿合并：同一格两边都改过时保留车间值，另一版留冲突 ----------
+    function mergeCells() {
+      const cells = new Array(cols * rows);
+      const conflicts = [];
+      for (let i = 0; i < cells.length; i++) {
+        const b = state.baseCells[i] | 0, w = state.workshopCells[i] | 0, s = state.sampleCells[i] | 0;
+        const wc = w !== b, sc = s !== b;
+        if (wc && sc) {
+          cells[i] = w; // 保留车间值
+          const prev = state.conflicts.find(c => c.i === i);
+          conflicts.push({ i, workshop: w, sample: s, resolved: prev && prev.workshop === w && prev.sample === s ? prev.resolved : false });
+        } else {
+          cells[i] = wc ? w : (sc ? s : b);
+        }
+      }
+      state.cells = cells;
+      state.conflicts = conflicts;
+    }
+
+    // ---------- 写入（两阶段 + 中断标记，按批次号恢复） ----------
+    function persist() {
+      localStorage.setItem(FLAG_KEY, JSON.stringify({ ts: Date.now(), phase: "write" }));
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      state.batches.forEach(b => {
+        try { localStorage.setItem(batchKey(b.no), JSON.stringify({ no: b.no, snapshot: b.snapshot, status: b.status })); } catch (e) {}
+      });
+      localStorage.removeItem(FLAG_KEY);
+    }
+
+    function load() {
+      const flag = JSON.parse(localStorage.getItem(FLAG_KEY) || "null");
+      if (flag) {
+        let s = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+        const found = [];
+        for (let n = 1; n < 1000; n++) {
+          const raw = localStorage.getItem(batchKey(n));
+          if (!raw) continue;
+          try { found.push(JSON.parse(raw)); } catch (e) {}
+        }
+        if (s) {
+          state = s;
+          cols = state.cols; rows = state.rows;
+          state.batches.forEach(b => {
+            const rec = found.find(f => f.no === b.no);
+            if (rec && !b.snapshot && rec.snapshot) b.snapshot = rec.snapshot;
+          });
+        } else {
+          // 主状态缺失：按批次号重建
+          cols = 18; rows = 14;
+          state = defaultState();
+          found.forEach(f => {
+            if (!state.batches.some(b => b.no === f.no)) {
+              state.batches.push({ no: f.no, cols, rows, capacity: 6, usedColors: 0, status: f.status || "queued", gap: 0, stale: false, snapshot: f.snapshot, package: f.status === "started" ? f.snapshot : null, createdAt: Date.now() });
+            }
+          });
+        }
+        mergeCells();
+        log("检测到写入中断：已按批次号恢复 " + state.batches.length + " 个批次，回传记录保留");
+        localStorage.removeItem(FLAG_KEY);
+        persist();
+        return;
+      }
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      if (saved) {
+        state = saved;
+        cols = state.cols; rows = state.rows;
+        mergeCells();
+        return;
+      }
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || "null");
+      if (legacy && Array.isArray(legacy.cells)) {
+        cols = legacy.cols || 18; rows = legacy.rows || 14;
+        state = defaultState();
+        state.baseCells = [...legacy.cells];
+        state.workshopCells = [...legacy.cells];
+        state.sampleCells = [...legacy.cells];
+        state.cells = [...legacy.cells];
+        log("旧方案缺批次号，已迁成首版（批次 1）");
+        persist();
+        return;
+      }
+      state = defaultState();
+      persist();
+    }
+
+    // ---------- 绘制 ----------
     function render() {
-      palette.innerHTML = colors.map((c, i) => '<button class="swatch '+(i===active?'active':'')+'" data-color="'+i+'" style="background:'+c+'"></button>').join("");
+      palette.innerHTML = colors.map((c, i) => '<button class="swatch ' + (i === active ? 'active' : '') + '" data-color="' + i + '" style="background:' + c + '"></button>').join("");
       palette.querySelectorAll("[data-color]").forEach(el => el.onclick = () => { active = Number(el.dataset.color); render(); });
-      grid.style.gridTemplateColumns = "repeat("+cols+", 1fr)";
-      grid.innerHTML = cells.map((v, i) => '<div class="cell" data-i="'+i+'" style="background:'+colors[v]+'"></div>').join("");
+      grid.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+      grid.innerHTML = state.cells.map((v, i) => '<div class="cell ' + (state.conflicts.some(c => c.i === i && !c.resolved) ? 'conflict' : '') + '" data-i="' + i + '" style="background:' + colors[v] + '"></div>').join("");
       grid.querySelectorAll(".cell").forEach(el => {
         el.onpointerdown = () => { dragging = true; paint(Number(el.dataset.i)); };
         el.onpointerenter = () => { if (dragging) paint(Number(el.dataset.i)); };
       });
       window.onpointerup = () => dragging = false;
+      document.querySelectorAll("#sideSeg button").forEach(b => b.classList.toggle("active", b.dataset.side === activeSide));
+      $("#sideHint").textContent = "当前稿：" + (activeSide === "workshop" ? "织造车间" : "打样间") + "。同一格两边都改过时保留车间值，打样稿留冲突。";
       renderStats();
+      renderBatches();
+      renderConflicts();
+      renderPackages();
+      renderLog();
     }
-    function snapshot() { undo.push([...cells]); redo = []; if (undo.length > 50) undo.shift(); }
+    function snapshotUndo() {
+      undo.push({ w: [...state.workshopCells], s: [...state.sampleCells] });
+      redo = [];
+      if (undo.length > 50) undo.shift();
+    }
     function paint(i) {
-      snapshot();
-      const targets = pattern(i);
-      targets.forEach(t => { if (t >= 0 && t < cells.length) cells[t] = active; });
+      snapshotUndo();
+      pattern(i).forEach(t => { if (t >= 0 && t < state.cells.length) state[activeSide + "Cells"][t] = active; });
+      mergeCells();
+      state.planRevision++;
+      state.batches.forEach(b => { if (b.status === "queued") b.stale = true; }); // 未开织批次预交付包失效，需重算
+      persist();
       render();
     }
     function pattern(i) {
       const x = i % cols, y = Math.floor(i / cols);
-      if (block === "cross") return [i, idx(x-1,y), idx(x+1,y), idx(x,y-1), idx(x,y+1)].filter(v => v !== null);
-      if (block === "diamond") return [idx(x,y-1), idx(x-1,y), i, idx(x+1,y), idx(x,y+1)].filter(v => v !== null);
+      if (block === "cross") return [i, idx(x - 1, y), idx(x + 1, y), idx(x, y - 1), idx(x, y + 1)].filter(v => v !== null);
+      if (block === "diamond") return [idx(x, y - 1), idx(x - 1, y), i, idx(x + 1, y), idx(x, y + 1)].filter(v => v !== null);
       return [i];
     }
-    function idx(x,y) { return x < 0 || x >= cols || y < 0 || y >= rows ? null : y * cols + x; }
-    function renderStats() {
-      const counts = colors.map((_, i) => cells.filter(v => v === i).length);
-      stats.innerHTML = counts.map((n, i) => '<div class="stat"><span><span style="display:inline-block;width:14px;height:14px;background:'+colors[i]+'"></span> 色线'+i+'</span><b>'+n+'</b></div>').join("");
-      preview.innerHTML = Array.from({length: 36}, (_, i) => '<div class="mini" style="background:'+colors[cells[(i % 6) + Math.floor(i / 6) * cols] || colors[0]]+'"></div>').join("");
-      const riskRows = [];
+    function idx(x, y) { return x < 0 || x >= cols || y < 0 || y >= rows ? null : y * cols + x; }
+
+    // ---------- 用色统计 / 断线风险（随色号变化重算） ----------
+    function computeUsage(cells) { return colors.map((_, i) => cells.filter(v => v === i).length); }
+    function distinctColors(cells) { return new Set(cells).size; }
+    function computeRisk(cells) {
+      const out = [];
       for (let y = 0; y < rows; y++) {
         let switches = 0;
-        for (let x = 1; x < cols; x++) if (cells[y*cols+x] !== cells[y*cols+x-1]) switches++;
-        if (switches > cols * .62) riskRows.push(y + 1);
+        for (let x = 1; x < cols; x++) if (cells[y * cols + x] !== cells[y * cols + x - 1]) switches++;
+        if (switches > cols * .62) out.push(y + 1);
       }
-      risk.innerHTML = riskRows.length ? '<p class="warning">第'+riskRows.join("、")+'行换色过密，可能断线。</p>' : '<p>暂无明显断线风险。</p>';
+      return out;
     }
-    document.querySelectorAll("[data-block]").forEach(btn => btn.onclick = () => block = btn.dataset.block);
-    document.querySelector("#newBtn").onclick = () => { undo = []; redo = []; init(false); };
-    document.querySelector("#undoBtn").onclick = () => { if (!undo.length) return; redo.push([...cells]); cells = undo.pop(); render(); };
-    document.querySelector("#redoBtn").onclick = () => { if (!redo.length) return; undo.push([...cells]); cells = redo.pop(); render(); };
-    document.querySelector("#saveBtn").onclick = () => localStorage.setItem("zfl31Pattern", JSON.stringify({ cols, rows, cells }));
-    document.querySelector("#exportBtn").onclick = () => {
-      const data = { cols, rows, cells, usage: colors.map((color, i) => ({ color, count: cells.filter(v => v === i).length })) };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "brocade-pattern.json"; a.click(); URL.revokeObjectURL(a.href);
+    function renderStats() {
+      const counts = computeUsage(state.cells);
+      stats.innerHTML = counts.map((n, i) => '<div class="stat"><span><span style="display:inline-block;width:14px;height:14px;background:' + colors[i] + '"></span> 色线' + i + '</span><b>' + n + '</b></div>').join("");
+      preview.innerHTML = Array.from({ length: 36 }, (_, i) => '<div class="mini" style="background:' + colors[state.cells[(i % 6) + Math.floor(i / 6) * cols] || colors[0]] + '"></div>').join("");
+      const riskRows = computeRisk(state.cells);
+      risk.innerHTML = riskRows.length ? '<p class="warning">第' + riskRows.join("、") + '行换色过密，可能断线。</p>' : '<p>暂无明显断线风险。</p>';
+    }
+
+    // ---------- 批次：锁定经向列数、纬向行数、色线容量，超出排队并写明缺口 ----------
+    function nextBatchNo() { return state.batches.reduce((m, b) => Math.max(m, b.no), 0) + 1; }
+    $("#newBatchBtn").onclick = () => {
+      const capacity = Math.max(1, Number($("#capacity").value) || 6);
+      const used = distinctColors(state.cells);
+      const no = nextBatchNo();
+      state.batches.push({
+        no, cols, rows, capacity, usedColors: used,
+        status: "queued", gap: Math.max(0, used - capacity),
+        stale: false, snapshot: null, package: null, createdAt: Date.now()
+      });
+      log("批次 " + no + " 已锁定网格 " + cols + "×" + rows + "、色线容量 " + capacity + "，用色 " + used +
+        (used > capacity ? "；超出容量，排队中，缺口 " + (used - capacity) + " 色线容量" : "，容量充足"));
+      persist();
+      render();
     };
-    init();
+    function recomputeBatch(no) {
+      const b = state.batches.find(x => x.no === no);
+      if (!b) return;
+      if (b.cols !== cols || b.rows !== rows) { log("批次 " + no + " 锁定幅面 " + b.cols + "×" + b.rows + " 与当前网格不一致，无法重算"); persist(); render(); return; }
+      b.usedColors = distinctColors(state.cells);
+      b.gap = Math.max(0, b.usedColors - b.capacity);
+      b.stale = false;
+      log("批次 " + no + " 已按当前方案重算：用色 " + b.usedColors + (b.gap > 0 ? "，缺口 " + b.gap + " 色线容量，仍排队" : "，容量充足"));
+      persist();
+      render();
+    }
+    function startBatch(no) {
+      const b = state.batches.find(x => x.no === no);
+      if (!b) return;
+      if (b.gap > 0) { log("批次 " + no + " 缺口 " + b.gap + " 色线容量，排队中，不能开织"); persist(); render(); return; }
+      if (state.conflicts.some(c => !c.resolved)) { log("存在未处理冲突，批次 " + no + " 暂不能生成交付包"); persist(); render(); return; }
+      b.status = "started";
+      b.snapshot = { cells: [...state.cells], usage: computeUsage(state.cells), risk: computeRisk(state.cells), cols, rows, revision: state.planRevision };
+      b.package = { no, generatedAt: Date.now(), ...b.snapshot };
+      log("批次 " + no + " 已开织：用色统计、断线风险按当前色号冻结，交付包生成（已开织批次保留原快照）");
+      persist();
+      render();
+    }
+    function renderBatches() {
+      $("#batchList").innerHTML = state.batches.length ? state.batches.map(b => `
+        <div class="batch">
+          <div class="batch-head">批次 #${b.no} <span class="badge ${b.status}">${b.status === "started" ? "已开织" : "排队中"}</span></div>
+          <div class="batch-meta">锁定 ${b.cols}×${b.rows} · 色线容量 ${b.capacity} · 用色 ${b.usedColors}</div>
+          ${b.gap > 0 ? '<div class="gap">排队中：缺口 ' + b.gap + ' 色线容量</div>' : '<div class="ok">容量充足</div>'}
+          ${b.stale && b.status === "queued" ? '<div class="stale">方案已变更，预交付包失效，需重算</div>' : ''}
+          <div class="batch-actions">
+            ${b.status === "queued" ? '<button class="small" data-start="' + b.no + '">开织</button>' : ''}
+            ${b.stale ? '<button class="small secondary" data-recompute="' + b.no + '">重算</button>' : ''}
+          </div>
+        </div>`).join("") : "<p class='muted'>暂无批次</p>";
+      $("#batchList").querySelectorAll("[data-start]").forEach(el => el.onclick = () => startBatch(Number(el.dataset.start)));
+      $("#batchList").querySelectorAll("[data-recompute]").forEach(el => el.onclick = () => recomputeBatch(Number(el.dataset.recompute)));
+    }
+
+    // ---------- 冲突处理：未处理不会生成交付包 ----------
+    function resolveConflict(i) {
+      const c = state.conflicts.find(x => x.i === i);
+      if (c) { c.resolved = true; log("冲突已处理：第 " + (Math.floor(i / cols) + 1) + " 行第 " + (i % cols + 1) + " 列保留车间值（色号 " + c.workshop + "）"); persist(); render(); }
+    }
+    function renderConflicts() {
+      $("#conflictList").innerHTML = state.conflicts.length ? state.conflicts.map(c => `
+        <div class="conflict ${c.resolved ? "resolved" : ""}">
+          第 ${Math.floor(c.i / cols) + 1} 行第 ${(c.i % cols) + 1} 列：车间值 <span class="swatch-inline" style="background:${colors[c.workshop]}"></span> 保留；打样值 <span class="swatch-inline" style="background:${colors[c.sample]}"></span> 留冲突
+          ${c.resolved ? '<div><em class="muted">已处理</em></div>' : '<div class="batch-actions"><button class="small" data-resolve="' + c.i + '">确认车间值</button></div>'}
+        </div>`).join("") : "<p class='muted'>两边稿无冲突</p>";
+      $("#conflictList").querySelectorAll("[data-resolve]").forEach(el => el.onclick = () => resolveConflict(Number(el.dataset.resolve)));
+    }
+
+    // ---------- 交付包：开织冻结快照，方案变更不影响已开织批次 ----------
+    function renderPackages() {
+      $("#packageList").innerHTML = state.batches.length ? state.batches.map(b => `
+        <div class="package">
+          <b>批次 #${b.no}</b>：${b.status === "started" && b.package
+            ? "交付包已生成 · 快照有效（锁定 " + b.cols + "×" + b.rows + "，用色 " + b.snapshot.usage.reduce((n, x) => n + (x > 0 ? 1 : 0), 0) + " 种，断线风险行 " + (b.snapshot.risk.length ? b.snapshot.risk.join("、") : "无") + "）"
+            : "排队中，未生成交付包"}
+        </div>`).join("") : "<p class='muted'>暂无交付包</p>";
+    }
+
+    // ---------- 回传：重复回传只认首次 ----------
+    $("#uploadBtn").onclick = () => {
+      const no = Number($("#uploadBatchNo").value);
+      if (!no) return;
+      if (state.uploads[no]) {
+        log("批次 " + no + " 重复回传，已按首次回传为准（本次忽略）");
+      } else {
+        state.uploads[no] = Date.now();
+        log("批次 " + no + " 回传已接收（首次回传为准）");
+      }
+      persist();
+      render();
+    };
+
+    // ---------- 日志 / 中断模拟 ----------
+    function renderLog() {
+      $("#logList").innerHTML = state.log.length ? state.log.map(l => '<div class="log-entry">' + new Date(l.t).toLocaleTimeString() + ' ' + l.msg + '</div>').join("") : "<p class='muted'>暂无记录</p>";
+    }
+    $("#interruptBtn").onclick = () => {
+      localStorage.setItem(FLAG_KEY, JSON.stringify({ ts: Date.now(), phase: "write" }));
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      // 只写入前一半批次键，模拟写入中途断网
+      state.batches.slice(0, Math.ceil(state.batches.length / 2)).forEach(b => {
+        try { localStorage.setItem(batchKey(b.no), JSON.stringify({ no: b.no, snapshot: b.snapshot, status: b.status })); } catch (e) {}
+      });
+      location.reload();
+    };
+
+    // ---------- 画布操作 ----------
+    document.querySelectorAll("[data-block]").forEach(btn => btn.onclick = () => block = btn.dataset.block);
+    document.querySelectorAll("#sideSeg button").forEach(b => b.onclick = () => { activeSide = b.dataset.side; render(); });
+    $("#newBtn").onclick = () => {
+      cols = Number($("#cols").value); rows = Number($("#rows").value);
+      state = defaultState();
+      undo = []; redo = [];
+      log("已新建网格，方案重置");
+      persist();
+      render();
+    };
+    $("#undoBtn").onclick = () => {
+      if (!undo.length) return;
+      const snap = undo.pop();
+      redo.push({ w: [...state.workshopCells], s: [...state.sampleCells] });
+      state.workshopCells = [...snap.w]; state.sampleCells = [...snap.s];
+      mergeCells(); state.planRevision++;
+      state.batches.forEach(b => { if (b.status === "queued") b.stale = true; });
+      persist(); render();
+    };
+    $("#redoBtn").onclick = () => {
+      if (!redo.length) return;
+      const snap = redo.pop();
+      undo.push({ w: [...state.workshopCells], s: [...state.sampleCells] });
+      state.workshopCells = [...snap.w]; state.sampleCells = [...snap.s];
+      mergeCells(); state.planRevision++;
+      state.batches.forEach(b => { if (b.status === "queued") b.stale = true; });
+      persist(); render();
+    };
+    $("#saveBtn").onclick = () => { persist(); log("方案已保存到本地（按批次号写入）"); render(); };
+    $("#exportBtn").onclick = () => {
+      const data = {
+        schema: 2, planNo: state.planNo, cols, rows,
+        cells: state.cells,
+        conflicts: state.conflicts,
+        batches: state.batches.map(b => ({ no: b.no, cols: b.cols, rows: b.rows, capacity: b.capacity, status: b.status, gap: b.gap })),
+        usage: computeUsage(state.cells).map((n, i) => ({ color: colors[i], count: n }))
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "brocade-plan.json"; a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    load();
+    render();
   </script>
 </body>
 </html>
